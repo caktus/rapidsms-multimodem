@@ -55,11 +55,19 @@ class MultiModemBackend(BackendBase):
 
     def send(self, id_, text, identities, context={}):
         logger.debug('Sending message: %s' % text)
-        query_string = self.prepare_querystring(id_, text, identities, context)
-        r = requests.get(url=self.sendsms_url, params=query_string)
-        if r.status_code != requests.codes.ok:
-            r.raise_for_status()
-        if "Err" in r.text:
-            logger.error("Send API failed with %s" % r.text)
-            logger.error("URL: %s" % r.url)
-        logger.debug("URL: %s" % r.url)
+        failures = {}
+        for identity in identities:
+            query_string = self.prepare_querystring(id_, text, [identity], context)
+            r = requests.get(url=self.sendsms_url, params=query_string)
+            if r.status_code != requests.codes.ok:
+                # HTTP Error
+                err_msg = '{0}: HTTP Error {1}: {2}'.format(identity, r.status_code, r.reason)
+                logger.error(err_msg)
+                failures[identity] = err_msg
+            elif "Err" in r.text:
+                # Multimodem Error
+                err_msg = '{0}: Multimodem Error: {1}'.format(identity, r.text)
+                logger.error(err_msg)
+                failures[identity] = err_msg
+        if failures:
+            raise Exception('Multimodem failed to send some messages.', failures)
